@@ -1,0 +1,153 @@
+在安装mysql时总是会遇到这样那样的问题，每次重新安装都会花很多时间来排查。在网上其实有很多相关的文章，但很多都只讲了方法，但没讲具体细节问题，导致无法解决问题。其实有时候知道问题的原因，但总是因为一些细节问题没有注意到，反复的尝试，浪费了很多时间。现在把我安装过程中遇到的问题以及该注意的问题记录下来。
+
+环境：windows7
+
+mysql版本：mysql-5.6.10-win32
+
+如果是默认安装，那么mysql会被安装到目录C:\Program Files\MySQL\MySQL Server 5.6中，特别要注意该目录，下面会说明原因。
+
+一般情况下，安装完mysql后，我们都希望直接可以连接使用，但是实际情况却不一定能这样顺利。安装完成后，直接在CMD中输入命令：
+
+[plain] view plaincopy在CODE上查看代码片派生到我的代码片
+C:\Windows\system32>mysql -uroot  
+'mysql' 不是内部或外部命令，也不是可运行的程序或批处理文件。  
+这是由于没有配置环境变量导致的，当然也可以先切换到mysql的安装目录再执行命令，不过那不是麻烦么。
+
+首先配置环境变量，把mysql所在目录的bin目录添加到path环境变量中（如何设置环境变量的具体操作省略，可以google一大把）。
+
+配置好环境变量后，该可以连接mysql了吧？试试看mysql -uroot，咦，怎么回事：
+
+[plain] view plaincopy在CODE上查看代码片派生到我的代码片
+
+C:\Windows\system32>mysql -uroot  
+ERROR 2003 (HY000): Can't connect to MySQL server on 'localhost' (10061)  
+什么原因？难道是服务没有启动，来启动服务看看：
+
+[plain] view plaincopy在CODE上查看代码片派生到我的代码片
+C:\Windows\system32>net start mysql  
+服务名无效。  
+  
+请键入 NET HELPMSG 2185 以获得更多的帮助。  
+居然服务名无效？打开windows服务一看，原来是安装完mysql后根本没有安装mysql服务，需要我们手动安装。
+
+安装mysql的服务很“简单”，在命令行中输入：
+
+[html] view plaincopy在CODE上查看代码片派生到我的代码片
+C:\Users\MikanMu>mysqld --install  
+Install/Remove of the Service Denied!  
+咦，怎么回事？这是由于没有权限造成的，需要在启动命令行时以管理员身份运行才行。关闭当前cmd窗口重新以管理员身份运行：
+
+[plain] view plaincopy在CODE上查看代码片派生到我的代码片
+C:\Windows\system32>mysqld --install  
+Service successfully installed.  
+提示成功安装。很好，安装完服务后，启动起来看看：
+
+[plain] view plaincopy在CODE上查看代码片派生到我的代码片
+
+C:\Windows\system32>net start mysql  
+发生系统错误 2。  
+  
+系统找不到指定的文件。  
+我了个去，这又是怎么回事？上网各种查，都说是需要在mysql配置文件中添加路径：
+
+basedir=C:/Program Files/MySQL/MySQL Server 5.6
+datadir=C:/Program Files/MySQL/MySQL Server 5.6/data
+
+好吧，我试试，mysql-5.6.10-win32默认的配置文件是在C:/Program Files/MySQL/MySQL Server 5.6/my-default.ini，或者自己建立一个my.ini文件，在其中添加配置：
+
+[mysqld]
+basedir=C:/Program Files/MySQL/MySQL Server 5.6
+datadir=C:/Program Files/MySQL/MySQL Server 5.6/data
+
+注意：1、安装目录下由于权限的原因不能直接建立文件，需要在其他地方建立并添加好相应的配置后，再拷贝到安装目录C:/Program Files/MySQL/MySQL Server 5.6下。
+
+2、网上有的说配置中的目录分隔符必须是正斜杠‘/’，但是经过实验，‘/’、‘\’、‘\\’都没有问题，都是可以的。
+
+3、basedir这个配置是mysql的安装目录，记住，一定是要配置到C:/Program Files/MySQL/MySQL Server 5.6这个目录，不能到C:/Program Files/MySQL就完了。
+
+4、my.ini文件的编码必须是英文编码（如windows中的ANSI），不能是UTF-8或GBK等。
+
+上面操作完成后（一定要注意细节），再来启动一下服务：
+
+[plain] view plaincopy在CODE上查看代码片派生到我的代码片
+C:\Windows\system32>net start mysql  
+发生系统错误 2。  
+  
+  
+系统找不到指定的文件。  
+怎么还是报这个错？难道不是由于配置的原因？对，不是由于上面的配置的问题，但上面的配置添加后也没有错。那是什么原因？
+
+这里是最需要注意的地方，在安装mysql服务时，一定要切换到mysql安装目录的bin目录下，不管你是否配置环境变量，否则在安装完后启动服务还是会报上面的错误。
+
+切换到bin目录后，先删除前面安装的mysql服务（删除服务不一定要到bin目录），再重新在bin目录下安装mysql服务，然后启动：
+
+[plain] view plaincopy在CODE上查看代码片派生到我的代码片
+C:\Windows\system32>cd ../..  
+  
+C:\>cd Program Files\MySQL\MySQL Server 5.6\bin  
+  
+C:\Program Files\MySQL\MySQL Server 5.6\bin>mysqld --remove  
+Service successfully removed.  
+  
+C:\Program Files\MySQL\MySQL Server 5.6\bin>mysqld --install  
+Service successfully installed.  
+  
+C:\Program Files\MySQL\MySQL Server 5.6\bin>net start mysql  
+MySQL 服务正在启动 .  
+MySQL 服务已经启动成功。  
+哇，终于成功了！！
+现在来验证一下不需要添加my.ini文件，也是可以正常启动服务的，只要是在bin目录下安装的服务就行。只需要停止mysql服务，把服务删除后，再把mysql安装目录下的my.ini文件删除掉，再重新安装服务，启动mysql服务，看看能不能正常启动即可，实验证明，是可以正常启动的。
+
+[plain] view plaincopy在CODE上查看代码片派生到我的代码片
+
+C:\Program Files\MySQL\MySQL Server 5.6\bin>net stop mysql  
+MySQL 服务正在停止.  
+MySQL 服务已成功停止。  
+  
+C:\Program Files\MySQL\MySQL Server 5.6\bin>mysqld --remove  
+Service successfully removed.  
+  
+C:\Program Files\MySQL\MySQL Server 5.6\bin>mysqld --install  
+Service successfully installed.  
+  
+C:\Program Files\MySQL\MySQL Server 5.6\bin>net start mysql  
+MySQL 服务正在启动 .  
+MySQL 服务已经启动成功。  
+终于大功告成！！！看看能不能连接：
+
+[plain] view plaincopy在CODE上查看代码片派生到我的代码片
+
+C:\Program Files\MySQL\MySQL Server 5.6\bin>mysql -uroot  
+Welcome to the MySQL monitor.  Commands end with ; or \g.  
+Your MySQL connection id is 3  
+Server version: 5.6.10 MySQL Community Server (GPL)  
+  
+Copyright (c) 2000, 2013, Oracle and/or its affiliates. All rights reserved.  
+  
+Oracle is a registered trademark of Oracle Corporation and/or its  
+affiliates. Other names may be trademarks of their respective  
+owners.  
+  
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.  
+  
+mysql>  
+完全没有问题。
+
+另外，mysql默认的root用户是没有设置密码的，我们可以修改root用户密码，方法如下：
+
+1、直接在cmd命令行，不需要进入mysql
+
+[plain] view plaincopy在CODE上查看代码片派生到我的代码片
+
+mysqladmin -u root password '新密码'  
+  2、在mysql中，一定要连接到某个数据库
+
+[plain] view plaincopy在CODE上查看代码片派生到我的代码片
+mysql> use mysql  
+Database changed  
+mysql> update user set password=password('新密码') where user='root';  
+Query OK, 3 rows affected (0.00 sec)  
+Rows matched: 3  Changed: 3  Warnings: 0  
+  
+mysql> flush privileges;  
+Query OK, 0 rows affected (0.00 sec)  
