@@ -1,0 +1,50 @@
+1、从该地址http://dev.mysql.com/downloads/mysql/中选择windows的版本，选择下载。
+
+2、将下载的压缩包解压。
+
+3、将根目录下的my-default.ini复制重命名为my.ini。
+
+4、打开my.ini文件，将下面的源码添加修改到my.ini中
+
+[client]
+default-character-set=utf8
+
+[mysqld]
+
+# 设置mysql服务器编码
+
+character_set_server=utf8
+
+#basedir设置mysql的安装目录，如果目录中带空格则必须加引号
+
+#datadir设置mysql数据库的数据的存放目录，文件夹名必须是data
+
+basedir=D:\Tool\mysql-5.6.16-win32
+
+datadir=D:\Tool\mysql-5.6.16-win32\data
+
+完成后保存。
+
+5、安装mysql服务
+
+从MS-DOS窗口进入目录E:\myserver\mysql-5.0.37-win32\bin，运行如下命令：
+
+mysqld --install mysql --defaults-file= “D:\Tool\mysql-5.6.16-win32\my.ini”
+
+当显示Service successfully installed.时即表示mysql注册成功。
+
+6、启动mysql数据库服务
+
+还在上面的命令窗口里面，输入命令：net start mysql
+
+这样就启动了mysql服务。
+
+7、停止mysql数据库服务
+
+还在上面的命令窗口里面，输入命令：net stop mysql
+
+这样就停止了mysql服务。
+
+8、删除mysql数据库服务
+
+还在上面的命令窗口里面，输入命令：mysqld remove mysql
