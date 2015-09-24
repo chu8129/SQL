@@ -1,0 +1,72 @@
+create table temp_huiyuewanda_07200726_ut_rank (
+vcimsi varchar(64),
+intterminalbrandid INTEGER,
+intterminalmodelid INTEGER,
+bibytes BIGINT,
+intrank INTEGER
+)with (appendonly=true,orientation=row,compresstype=zlib,COMPRESSLEVEL=5)
+distributed randomly
+
+
+------选择分布策略------
+2种方式：
+DISTRIBUTED BY (哈希分布)
+DISTRIBUTED RANDOMLY(随机分布 Round-Robin)
+考虑条件(重要性依次排序)
+1. Even Data Distribution
+为了得到最好的性能，所有segment的数据量应该是相等的。
+如果出现不平衡的话，在查询的时候，数据量多的segment的负载就会很大。
+2.Local and Distributed Operations
+要做join、sort或aggregation的操作的话，segment-level(segment内部)比system-level(segment之间)要快。
+3. Even Query Processing
+每个Segment都获得相等的查询请求负载
+ 
+------表存储方式------
+1. Heap 或 Append-Only存储
+   GP默认使用堆表。堆表最好用在小表，如：维表(初始化后经常更新)
+   Append-Only表不能update和delete。一般用来做批量数据导入。 不建议单行插入。
+   如:
+    => CREATE TABLE bar (a int, b text)
+       WITH (appendonly=true)
+       DISTRIBUTED BY (a);
+2. Row 或 Column-Oriented 存储
+   GP提供存储模式: 行存储、列存储、混合存储
+   使用情景说明：
+   a.数据需要更新
+     行存储 => 表数据被导入后，如果需要更新的话
+     列存储 => 只适合append-only表。
+   b.经常插入数据
+     行存储 => 如果频繁插入数据
+     列存储 => 对于写操作没有做优化 (同一行的列值必须写到磁盘的不同位置)
+   c.多列查询请求
+     行存储 => 在select或where子句中，查询所有列或大部分列
+     列存储 => 在where或having子句中，查询单列的值汇总或单行过滤
+              如: SELECT AVG(salary)... WHERE salary > 10000
+                  SELECT salary, dept ... WHERE state='CA'
+   d.表中许多列
+     行存储 => 同一次请求很多列 或 行数据大小相对较小
+     列存储 => 使用宽表，查询时候仅仅查少数列
+   e.压缩
+     行存储 => 不可用
+     列存储 =>  可用
+     如：(注： 使用列存储必须是append-only表)
+     => CREATE TABLE bar (a int, b text)
+        WITH (appendonly=true, orientation=column)
+        DISTRIBUTED BY (a);
+3. 使用压缩 (Append-Only表才适用)
+   可以数据库内置的压缩(zlib 或 QuickLZ)。如果使用了已压缩的文件系统，建append-only表将不能使用压缩功能。
+   在选择append-only表的压缩类型和级别的时候需考虑一下因素：
+   @ CPU的使用率
+   @ 压缩率/磁盘大小
+   @ 压缩速率
+   @ 解压速率/扫描速率
+  
+   尽管我们为了减少数据容量大小而使用压缩功能，但是我们必须考虑到数据在压缩与解压的过程中的时间和cpu的消耗。
+   压缩的性能取决于硬件、查询调优设置、其它因素。
+   QuickLZ - 低压缩率、低cpu消耗、压缩数据块
+   zlib - 高压缩率、低速
+  
+   示例：=> CREATE TABLE foo (a int, b text)
+            WITH (appendonly=true, compresstype=zlib,
+            compresslevel=5);
+    (注: QuickLZ的压缩级别只有level1，zlib能够设置从1-9)
