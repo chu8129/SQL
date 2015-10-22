@@ -7,6 +7,7 @@ intrank INTEGER
 )with (appendonly=true,orientation=row,compresstype=zlib,COMPRESSLEVEL=5)
 distributed randomly
 
+create table A as select * from B distributed randomly;
 
 ------选择分布策略------
 2种方式：
