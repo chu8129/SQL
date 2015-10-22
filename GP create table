@@ -9,6 +9,8 @@ distributed randomly
 
 create table A as select * from B distributed randomly;
 
+appendonly=true;指的是该表只有增加记录的权限，update、delete这些就不要用了
+
 ------选择分布策略------
 2种方式：
 DISTRIBUTED BY (哈希分布)
