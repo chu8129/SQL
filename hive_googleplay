@@ -1,0 +1,58 @@
+drop table if exists mgdb_googleplay_apk;
+create table mgdb_googleplay_apk (
+apk string,
+url string,
+title string,
+rating_count string,
+document_subtitle string,
+category string,
+score string,
+5star_num string,
+4star_num string,
+3star_num string,
+2star_num string,
+1star_num string,
+datepublished string,
+filesize string,
+numdownloads string,
+softwareversion string,
+operatingsystems string,
+contentrating string,
+hudongyuansu string,
+tigongzhe string) 
+ROW FORMAT SERDE 'com.mongodb.hadoop.hive.BSONSerDe'
+STORED AS INPUTFORMAT 'com.mongodb.hadoop.mapred.BSONFileInputFormat' 
+OUTPUTFORMAT 'com.mongodb.hadoop.hive.output.HiveBSONFileOutputFormat'; 
+
+
+create external table mgdb_googleplay_apk_tab02 (
+apk string,
+url string,
+title string,
+rating_count string,
+document_subtitle string,
+category string,
+score string,
+5star_num string,
+4star_num string,
+3star_num string,
+2star_num string,
+1star_num string,
+datepublished string,
+filesize string,
+numdownloads string,
+softwareversion string,
+operatingsystems string,
+contentrating string,
+hudongyuansu string,
+tigongzhe string) 
+ROW FORMAT SERDE 'com.mongodb.hadoop.hive.BSONSerDe'
+STORED BY 'com.mongodb.hadoop.hive.MongoStorageHandler'
+TBLPROPERTIES('mongo.uri'='mongodb://*:*/googleplay.googleplay');
+
+db.googleplay.update({}, {$rename : {"datePublished" : "datepublished"}}, false, true);
+db.googleplay.update({}, {$rename : {"fileSize" : "filesize"}}, false, true);
+db.googleplay.update({}, {$rename : {"numDownloads" : "numdownloads"}}, false, true);
+db.googleplay.update({}, {$rename : {"softwareVersion" : "softwareversion"}}, false, true);
+db.googleplay.update({}, {$rename : {"operatingSystems" : "operatingsystems"}}, false, true);
+db.googleplay.update({}, {$rename : {"contentRating" : "contentrating"}}, false, true);
