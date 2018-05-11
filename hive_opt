@@ -1,0 +1,476 @@
+
+>例1:
+  select word, count(*)
+  from ( 
+  select 
+  explode(split(sentence. ' ')) word 
+  from article 
+  ) t
+  group by word
+。。。用来和MapReduce比较的例子，MapReduce就不写了
+#############################################################################################################################
+>数据类型：
+  基本的数据类型：
+    int/bigint/smallint
+    boolean
+    double/float
+    String
+  复杂数据类型：
+    Array
+    Map
+    Struct(*是不是像C里面的？待验证*)
+#############################################################################################################################
+>创表语句：
+
+CREATE [EXTERNAL] TABLE [IF NOT EXISTS] table_name 
+(
+col_name data_type, 
+...
+)
+[PARTITIONED BY (col_name data_type, ...)]
+[ [ROW FORMAT row_format] [STORED AS file_format] ]
+[LOCATION hdfs_path]
+创建表的时候指定文件的储存路径必须是HDFS中的文件；
+----------------------------------------------------------
+CREATE TABLE tmp_table #表名
+(
+title   string, # 字段名称 字段类型
+minimum_bid     double,
+quantity        bigint,
+have_invoice    bigint
+)COMMENT '注释：XXX' #表注释
+ PARTITIONED BY(pt STRING) #分区表字段（如果你文件非常之大的话，采用分区表可以快过滤出按分区字段划分的数据）
+ ROW FORMAT DELIMITED 
+   FIELDS TERMINATED BY ‘|'   # 字段是用什么分割开的
+STORED AS SEQUENCEFILE; #用哪种方式存储数据，SEQUENCEFILE是hadoop自带的文件压缩格式
+----------------------------------------------------------
+CREATE EXTERNAL TABLE IF NOT EXISTS imsi_info
+( mobile_no STRING, 
+  imsi STRING COMMENT ‘IMSI‘
+)
+    COMMENT 'This is the imsi table'
+    ROW FORMAT DELIMITED FIELDS TERMINATED BY ‘|' 
+    LINES 	TERMINATED BY ‘\n'
+    STORED AS TEXTFILE
+    LOCATION '/user/data/hadoop/imsi_info’
+----------------------------------------------------------
+----------------------------------------------------------
+----------------------------------------------------------
+----------------------------------------------------------
+----------------------------------------------------------
+----------------------------------------------------------
+  
+  
+>>  partitioned by 分区，来一段MySQL的：
+mysql> CREATE TABLE part_tab ( c1 int default NULL, c2 varchar(30) default NULL, c3 date default NULL) engine=myisam 
+PARTITION BY RANGE (year(c3)) (PARTITION p0 VALUES LESS THAN (1995),
+PARTITION p1 VALUES LESS THAN (1996) , PARTITION p2 VALUES LESS THAN (1997) ,
+PARTITION p3 VALUES LESS THAN (1998) , PARTITION p4 VALUES LESS THAN (1999) ,
+PARTITION p5 VALUES LESS THAN (2000) , PARTITION p6 VALUES LESS THAN (2001) ,
+PARTITION p7 VALUES LESS THAN (2002) , PARTITION p8 VALUES LESS THAN (2003) ,
+PARTITION p9 VALUES LESS THAN (2004) , PARTITION p10 VALUES LESS THAN (2010),
+PARTITION p11 VALUES LESS THAN MAXVALUE ); 
+  row format row_format，百度了一下：
+  
+>>  Mysql的row_format  
+若一张表里面不存在varchar、text以及其变形、blob以及其变形的字段的话，那么张这个表其实也叫静态表，
+即该表的row_format是fixed，就是说每条记录所占用的字节一样。其优点读取快，缺点浪费额外一部分空间。 
+若一张表里面存在varchar、text以及其变形、blob以及其变形的字段的话，那么张这个表其实也叫动态表，
+即该表的row_format是dynamic，就是说每条记录所占用的字节是动态的。其优点节省空间，缺点增加读取的时间开销。 
+所以，做搜索查询量大的表一般都以空间来换取时间，设计成静态表。   
+row_format还有其他一些值： DEFAULT FIXED DYNAMIC COMPRESSED REDUNDANT COMPACT 
+修改行格式 ALTER TABLE table_name ROW_FORMAT = DEFAULT   
+修改过程导致： fixed--->dynamic: 这会导致CHAR变成VARCHAR dynamic--->fixed: 这会导致VARCHAR变成CHAR
+  
+>>  stored as file_format
+Hive 在创表时可以使用store as file_format来限定储存的文件格式；
+> CREATE EXTERNAL TABLE MYTEST(num INT, name STRING)
+> ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t'
+> STORED AS TEXTFILE
+> LOCATION '/data/test';
+
+>>  hive文件储存时有下面集中类型：
+
+TEXTFILE：默认格式，不进行压缩，磁盘开销、数据解析开销大；可结合Gzip Bzip2使用（系统自动检查并且查询时自动解压，缺点是hive不对数据切分，导致不能并行操作）
+> create table test1(str STRING)
+> STORED AS TEXTFILE; 
+OK
+Time taken: 0.786 seconds
+#写脚本生成一个随机字符串文件，导入文件：
+> LOAD DATA LOCAL INPATH '/home/work/data/test.txt' INTO TABLE test1;
+Copying data from file:/home/work/data/test.txt
+Copying file: file:/home/work/data/test.txt
+Loading data to table default.test1
+OK
+Time taken: 0.243 seconds
+
+SEQUENCEFILE：hadoop api 提供的一种二进制支持，使用方便，可分割可压缩，支持三种压缩选择，NONE，RECORED，BLOCK；RECORD压缩率低，一般使用BLOCK；
+
+> create table test2(str STRING)
+> STORED AS SEQUENCEFILE;
+OK
+Time taken: 5.526 seconds
+hive> SET hive.exec.compress.output=true;
+hive> SET io.seqfile.compression.type=BLOCK;
+hive> INSERT OVERWRITE TABLE test2 SELECT * FROM test1;
+
+RCFILE：一种行列储存相结合的储存格式，先将数据按行分块，保证同一个RECORD在一个块上，避免读一个RECORED需要读取多个block；
+
+> create table test3(str STRING)
+> STORED AS RCFILE;
+OK
+Time taken: 0.184 seconds
+>  INSERT OVERWRITE TABLE test3 SELECT * FROM test1;
+
+自定义格式：当用户的数据文件格式不能被当前 Hive 所识别的时候，可以自定义文件格式。
+用户可以通过实现inputformat和outputformat来自定义输入输出格式，参考代码：
+.\hive-0.8.1\src\contrib\src\java\org\apache\hadoop\hive\contrib\fileformat\base64
+实例
+
+> create table test4(str STRING)
+> stored as
+> inputformat 'org.apache.hadoop.hive.contrib.fileformat.base64.Base64TextInputFormat'
+> outputformat 'org.apache.hadoop.hive.contrib.fileformat.base64.Base64TextOutputFormat';
+$ cat test1.txt 
+aGVsbG8saGl2ZQ==
+aGVsbG8sd29ybGQ=
+aGVsbG8saGFkb29w
+test1文件为base64编码后的内容，decode后数据为：
+hello,hive
+hello,world
+hello,hadoop
+hive> LOAD DATA LOCAL INPATH '/home/work/test1.txt' INTO TABLE test4; 
+Copying data from file:/home/work/test1.txt
+Copying file: file:/home/work/test1.txt
+Loading data to table default.test4
+OK
+Time taken: 4.742 seconds
+hive> select * from test4;
+OK
+hello,hive
+hello,world
+hello,hadoop
+Time taken: 1.953 seconds
+
+相比TEXTFILE和SEQUENCEFILE，RCFILE由于列式存储方式，数据加载时性能消耗较大，但是具有较好的压缩比和查询响应。数据仓库的特点是一次写入、多次读取，因此，整体来看，RCFILE相比其余两种格式具有较明显的优势。
+#############################################################################################################################
+查询表结构命令
+show tables;查询所有的表；
+show tables “users*”， 模糊查询
+show partitions table，查看哪些表有分区
+desc[extended/formatted] tablename，查看表信息
+#############################################################################################################################
+修改表名：
+ ALTER TABLE TABLENAME RENAME TO NEWTABLENAME
+添加列：
+ALTER TABLE TABLENAME ADD COLUMNS(NEWCOL)
+修改列：
+ALTER TABLE TABLENAME CHANGE A A1 INT
+添加分区：
+ALTER TABLE TABLENAME ADD PARTITION(DT='20150412')[LOCATION 'LOCATION1'
+#############################################################################################################################
+加载数据到数据表：
+  当数据被加载到表中时，不会对数据进行任何的转换，load只是将数据复制到表对应的位置；
+  LOAD DATA [LOCAL] INPATH 'FILEPATH' [OVERWRITE] INTO TABLE TABLENAME [PARTITION(PARTCOL1=VAL1,PARTCOL2=VAL2...)]
+  保证表已经建立，并且格式完全一直（分隔符、换行等）
+#############################################################################################################################
+支持的简单查询：
+支持：group by,sort by,order by
+支持聚合函数：sum(),count() etc
+支持：join查询,union查询
+支持函数：substrin etc
+
+select
+SELECT [ALL | DISTINCT] select_expr, select_expr, ...
+	FROM table_reference 
+	[WHERE where_condition] 
+	[GROUP BY col_list] 
+	[ CLUSTER BY col_list | [DISTRIBUTE BY col_list] [SORT BY col_list] | [ORDER BY col_list] ]
+	[LIMIT number]
+
+
+#############################################################################################################################
+Subqueries
+SELECT ... FROM (subquery) name ...
+不支持exist in子查询
+select_statement UNION ALL select_statement UNION ALL select_statement ... 
+
+#############################################################################################################################
+WHERE Clause
+where condition 是一个布尔表达式。例如，下面的查询语句只返回销售记录大于 10，且归属地属于美国的销售代表。Hive 不支持在WHERE 子句中的 IN，EXIST 或子查询。
+         SELECT * FROM sales WHERE amount > 10 AND region = "US"
+#############################################################################################################################
+HAVING Clause
+Hive 现在不支持 HAVING 子句。可以将 HAVING 子句转化为一个字查询，例如：
+SELECT col1 FROM t1 GROUP BY col1 HAVING SUM(col2) > 10
+可以用以下查询来表达：
+SELECT col1 FROM (SELECT col1, SUM(col2) AS col2sum  FROM t1 GROUP BY col1) t2  WHERE t2.col2sum > 10
+
+#############################################################################################################################
+ALL and DISTINCT Clauses 支持
+
+#############################################################################################################################
+基于Partition的查询      *****
+一般 SELECT 查询会扫描整个表（除非是为了抽样查询）。但是如果一个表使用 PARTITIONED BY 子句建表，查询就可以利用分区剪枝（input pruning）的特性，只扫描一个表中它关心的那一部分。Hive 当前的实现是，只有分区断言出现在离 FROM 子句最近的那个WHERE 子句中，才会启用分区剪枝。例如，如果 page_views 表使用 date 列分区，以下语句只会读取分区为‘2008-03-01’的数据。
+ SELECT page_views.*    FROM page_views    WHERE page_views.date >= '2008-03-01' AND page_views.date <= '2008-03-31'
+
+#############################################################################################################################
+LIMIT Clause          ***
+Limit 可以限制查询的记录数。查询的结果是随机选择的。下面的查询语句从 t1 表中随机查询5条记录：
+SELECT * FROM t1 LIMIT 5
+Top k 查询
+下面的查询语句查询销售记录最大的 5 个销售代表。
+SET mapred.reduce.tasks = 1  SELECT * FROM sales SORT BY amount DESC LIMIT 5
+
+#############################################################################################################################
+set hive.mapred.mode=nonstrict; (default value / 默认值)
+set hive.mapred.mode=strict;
+order by 和数据库中的Order by 功能一致，按照某一项 & 几项 排序输出。
+与数据库中 order by 的区别在于在hive.mapred.mode = strict 模式下 必须指定 limit 否则执行会报错。
+hive> select * from test order by id;
+FAILED: Error in semantic analysis: 1:28 In strict mode, if ORDER BY is specified, LIMIT must also be specified. Error encountered near token 'id'
+原因： 在order by 状态下所有数据会到一台服务器进行reduce操作也即只有一个reduce，如果在数据量大的情况下会出现无法输出结果的情况，如果进行 limit n ，那只有  n * map number 条记录而已。只有一个reduce也可以处理过来。
+
+#############################################################################################################################
+sort by 不受 hive.mapred.mode 是否为strict ,nostrict 的影响
+sort by 的数据只能保证在同一reduce中的数据可以按指定字段排序。
+使用sort by 你可以指定执行的reduce 个数 （set mapred.reduce.tasks=<number>） 这样可以输出更多的数据。
+对输出的数据再执行归并排序，即可以得到全部结果。
+注意：可以用limit子句大大减少数据量。使用limit n后，传输到reduce端（单机）的数据记录数就减少到n* （map个数）。否则由于数据过大可能出不了结果。
+
+按照指定的字段对数据进行划分到不同的输出reduce  / 文件中。
+ insert overwrite local directory '/home/hadoop/out' select * from test order by name distribute by length(name);  
+ 此方法会根据name的长度划分到不同的reduce中，最终输出到不同的文件中。 
+ length 是内建函数，也可以指定其他的函数或这使用自定义函数。
+
+#############################################################################################################################
+cluster by 除了具有 distribute by 的功能外还兼具 sort by 的功能。 
+倒序排序，且不能指定排序规则。 asc  或者 desc。
+#############################################################################################################################
+Hive 只支持等值连接（equality joins）、外连接（outer joins）和（left semi joins???）。Hive 不支持所有非等值的连接，因为非等值连接非常难转化到 map/reduce 任务。另外，Hive 支持多于 2 个表的连接。
+   例：	SELECT a.* FROM a JOIN b ON (a.id = b.id)  	
+		SELECT a.* FROM a JOIN b    	ON (a.id = b.id AND a.department = b.department)
+如果join中多个表的 join key 是同一个，则 join 会被转化为单个 map/reduce 任务，
+例如：
+		  SELECT a.val, b.val, c.val FROM a JOIN b  	  ON (a.key = b.key1) JOIN c  	  ON (c.key = b.key1)
+		  被转化为单个 map/reduce 任务，因为 join 中只使用了 b.key1 作为 join key。
+#############################################################################################################################
+join 时，每次 map/reduce 任务的逻辑是这样的：reducer 会缓存 join 序列中除了最后一个表的所有表的记录，再通过最后一个表将结果序列化到文件系统。这一实现有助于在 reduce 端减少内存的使用量。实践中，应该把最大的那个表(驱动表)写在最后（否则会因为缓存浪费大量内存）。
+   	例如：
+ 		 SELECT a.val, b.val, c.val FROM a   	 JOIN b ON (a.key = b.key1) JOIN c ON (c.key = b.key1)
+所有表都使用同一个 join key（使用 1 次 map/reduce 任务计算）。Reduce 端会缓存 a 表和 b 表的记录，然后每次取得一个 c 表的记录就计算一次 join 结果，类似的还有：
+  SELECT a.val, b.val, c.val FROM a    JOIN b ON (a.key = b.key1) JOIN c ON (c.key = b.key2)
+这里用了 2 次 map/reduce 任务。第一次缓存 a 表，用 b 表序列化；第二次缓存第一次 map/reduce 任务的结果，然后用 c 表序列化
+Join
+join_table: table_reference JOIN table_factor [join_condition] | table_reference [{LEFT|RIGHT|FULL} OUTER | LEFT SEMI] JOIN table_reference join_condition
+table_reference: table_factor | join_table 
+table_factor: tbl_name [alias] | table_subquery alias | ( table_references ) 
+join_condition: ON equality_expression ( AND equality_expression )* equality_expression: expression = expression
+
+#############################################################################################################################
+高效的hive脚本
+  数据模型合理
+  job尽量少
+  很具输出与输出大小，设置合理的Map/Reduce数量
+  小文件合并
+  避免笛卡尔积
+  避免数据倾斜
+  分区剪裁、列剪裁
+  合理利用中间表，避免对一个表重复扫描
+  合理使用Mapjoin
+  合理使用union all
+  合理使用动态分区
+  
+#############################################################################################################################
+不支持的语义：
+  update delete
+  having
+  exist in
+  非等值join
+  有限的order by
+  
+#############################################################################################################################
+
+分区裁减、列裁减
+SELECT  a.sndaid,a.mobile,a.appid,a.guid,a.login_date 
+FROM    woa_user_info_mes_tmp1 a 
+left outer join  woa20_first_login_his b 
+ON      (a.sndaid = b.sndaid AND a.appid = b.appid) 
+WHERE   b.pt = '2012-05-28';
+
+SELECT  a.sndaid,a.mobile,a.appid,a.guid,a.login_date 
+FROM    woa_user_info_mes_tmp1 a 
+left outer join  (SELECT * from woa20_first_login_his where pt = '2012-05-28') b 
+ON      (a.sndaid = b.sndaid AND a.appid = b.appid);
+
+SELECT  a.sndaid,a.mobile,a.appid,a.guid,a.login_date 
+FROM    woa_user_info_mes_tmp1 a 
+left outer join  woa20_first_login_his b 
+ON      (a.sndaid = b.sndaid AND a.appid = b.appid AND b.pt = '2012-05-28');
+
+#############################################################################################################################
+合理利用中间表
+insert overwrite table ad_src_group_eft_ft partition(pt='$ad_parameter_pt')
+select  ...  
+from    (
+        select  ... 
+        from    ad_session  a join 
+                ad_path     b   on a.session_id = b.session_id  left outer join 
+                ad_effect   c   on b.page_id = c.page_id and c.pt >= '$ad_parameter_time_begin' and c.pt <= '$ad_parameter_time_end'
+        where   a.pt >= '$ad_parameter_time_begin' and a.pt <= '$ad_parameter_time_end' and b.pt >= '$ad_parameter_time_begin'
+                and b.pt <= '$ad_parameter_time_end'
+        group by (CASE when a.source_type = 4 then 2 else a.source_type end),a.uid,a.bussiness_id,c.effect_id
+        ) p left outer join (
+        select ... 
+        from    (SELECT  ... 
+	                from    ad_path     a   join
+	                        ad_session  b   on  a.session_id=b.session_id    LEFT OUTER join
+	                        ad_effect   c   on  a.page_id=c.page_id and c.pt >= '$ad_parameter_time_begin' and c.pt <= '$ad_parameter_time_end'
+	                where   a.pt >= '$ad_parameter_time_begin' AND     a.pt <= '$ad_parameter_time_end'AND     b.pt >= '$ad_parameter_time_begin' 
+	                and     b.pt <= '$ad_parameter_time_end'    
+                ) x
+        group by    x.uid,x.bussiness_id,x.source_type,x.effect_id
+        ) q on p.uid=q.uid and p.bussiness_id=q.bussiness_id and p.source_type=q.source_type and p.effect_id=q.effect_id;
+
+
+#############################################################################################################################
+避免笛卡尔积
+SELECT   …. 
+from   woa_all_device_info_his A
+left outer join(
+        select *
+        from   woa_all_info_his B
+        where  (B.mobile <> 'unknown' or B.imsi <> 'unknown')
+        and    B.imei <> 'unknown'
+        and    B.pt = '$data_desc'
+       ) C
+on     A.app_id = C.app_id and A.imei = C.imei
+where  A.mobile = 'unknown'
+and    A.imei <> 'unknown'
+and    A.imsi = 'unknown'
+and    A.pt = '$data_desc'
+distribute by app_id, imei, imsi
+sort by app_id, imei, imsi, weight asc, td asc
+
+#############################################################################################################################
+合理使用Maphoin
+Select /*+ mapjoin(tablelist) */ , tablelist中的表会读入内存，然后分发到所有的reduce端
+hive.mapjoin.cache.numrows=25000
+	hive.mapjoin.smalltable.filesize=25000000
+Bucket Map Join
+
+#############################################################################################################################
+用join替代in
+S elect userid,
+	count(distinct vid) 
+	from p_sdo_data_etl.r_ku6_video_channel_name 
+	where substr(uploadtime,1,10)>='2012-05-01' and substr(uploadtime,1,10)<='2012-05-28' 
+	and userid in ('1500746','18231468','18231484','18231498','18231517','18231539','18231552',.....)
+	GROUP BY userid;
+create external table lxw_test (id string) location '/group/p_sdo_data/p_sdo_data_etl/lxw/';
+select /*+ mapjoin(a) */ userid,
+	count(distinct vid) 
+	from p_sdo_data_etl.lxw_test a 
+	join p_sdo_data_etl.r_ku6_video_channel_name b 
+	on (a.id = b.userid)
+	where substr(uploadtime,1,10)>='2012-05-01' 
+	and substr(uploadtime,1,10)<='2012-05-28' 
+	group by userid;
+
+#############################################################################################################################
+合理使用union all
+select type,popt_id,login_date 
+           FROM (
+             select 'm3_login' as type,popt_id,login_date  
+            from lxw_test3 
+            where login_date>='2012-02-01' and login_date<'2012-05-01' 
+            union all 
+            select 'mn_login' as type,popt_id,login_date 
+            from lxw_test3 
+            where login_date>='2012-05-01' and login_date<='2012-05-09' 
+	   union all 
+             ……
+	) x;
+from lxw_test3 
+	insert overwrite table lxw_test6 partition (flag = '1') 
+	select 'm3_login' as type,popt_id,login_date  
+	where login_date>='2012-02-01' and login_date<'2012-05-01' 
+	insert overwrite table lxw_test6 partition (flag = '2') 
+	select 'mn_login' as type,popt_id,login_date 
+	where login_date>='2012-05-01' and login_date<='2012-05-09' 
+	insert overwrite table lxw_test6 partition (flag = '3') 
+	select 'm3_g_login' as type,popt_id,login_date 
+	where login_date>='2012-02-01' and login_date<'2012-05-01' and apptypeid='1‘
+
+
+不同表太多的union ALL,不推荐使用;
+通常采用建临时分区表，将不同表的结果insert到不同的分区(可并行)，最后再统一处理; 
+
+INSERT overwrite TABLE lxw_test (flag = '1') 
+	SELECT sndaid,mobile FROM lxw_test1;
+	
+	INSERT overwrite TABLE lxw_test (flag = '2') 
+	SELECT sndaid,mobile FROM lxw_test2;
+	
+	INSERT overwrite TABLE lxw_test (flag = '3') 
+	SELECT sndaid,mobile FROM lxw_test3;
+
+#############################################################################################################################
+合理使用动态分区（未能理解）
+SET hive.exec.dynamic.partition=true; 
+SET hive.exec.dynamic.partition.mode=nonstrict;
+	
+create table lxw_test1 (
+	sndaid string,
+	mobile string
+	) partitioned by (ptSTRING) 
+	stored as rcfile;
+	
+	insert overwrite table lxw_test1 partition (pt) 
+	select sndaid,mobile,pt from woa_user_info_mes_tmp1 limit 10;
+
+#############################################################################################################################
+
+数据倾斜：
+症状：
+	任务迚度长时间维持在99%（或100%）;
+	查看任务监控页面，发现只有少量（1个或几个）reduce子任务未完成。
+	本地读写数据量很大。
+导致数据倾斜的操作：
+	GROUP BY,  COUNT DISTINCT,  join
+原因：
+	key分布不均匀
+	业务数据本身特点
+
+
+COUNT DISTINCT & GROUP BY
+
+	1. 参数调节: SET hive.groupby.skewindata=TRUE;
+			select count(distinct imei) 
+			from woa_all_user_info_his where pt = '2012-05-28';
+	2. 存在大量空值或者null时候，可以先过滤，在最后结果+1即可;
+			SELECT CAST(COUNT(DISTINCT imei)+1 AS bigint) 
+			FROM woa_all_user_info_his where pt = '2012-05-28' 
+			AND imei <> '' AND imei IS NOT NULL;
+	3. 多重count DISTINCT;
+			union all + rownumber + sum group by
+
+JOIN 
+
+	1.关联键存在大量空值或者某一特殊值，如'null';
+	(1) 空值单独处理，不参与关联;
+	(2) 空值或者特殊值加随机数作为关联键;
+
+	2.不同数据类型的字段关联:
+	(1) 转换为同一数据类型之后再关联;
+
+
+
+
+学会在jobtracker上查看job执行信息
+学会使用desc extended/formatted tablename查看表信息
+了解hive->mapreduce的过程
+学会根据输入输出，设置合理的map/reduce task数
+学会运用hive的输出压缩
+
+
